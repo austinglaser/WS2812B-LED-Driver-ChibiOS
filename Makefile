@@ -65,7 +65,7 @@ PROJECT = ch
 
 # Imported source files and paths
 CHIBIOS = ChibiOS-RT
-include $(CHIBIOS)/boards/ST_STM32F3_DISCOVERY/board.mk
+include $(CHIBIOS)/boards/ST_STM32F3_LUMINEXUS/board.mk
 include $(CHIBIOS)/os/hal/platforms/STM32F30x/platform.mk
 include $(CHIBIOS)/os/hal/hal.mk
 include $(CHIBIOS)/os/ports/GCC/ARMCMx/STM32F3xx/port.mk
@@ -220,3 +220,7 @@ ifeq ($(USE_FWLIB),yes)
 endif
 
 include $(CHIBIOS)/os/ports/GCC/ARMCMx/rules.mk
+
+.PHONY: upload
+upload:
+	sudo dfu-util --device 0483:df11 --alt 0 --dfuse-address 0x08000000 --download ./build/ch.bin

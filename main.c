@@ -19,41 +19,8 @@
 #include "test.h"
 #include "LEDDriver.h"
 
-/*
- * This is a periodic thread that does absolutely nothing except flashing LEDs.
- */
-static WORKING_AREA(waThread1, 128);
-static msg_t Thread1(void *arg) {
+#define N_LEDS 20
 
-  (void)arg;
-  chRegSetThreadName("blinker");
-  while (TRUE) {
-    palSetPad(GPIOE, GPIOE_LED3_RED);
-    chThdSleepMilliseconds(100);
-    palClearPad(GPIOE, GPIOE_LED3_RED);
-    palSetPad(GPIOE, GPIOE_LED5_ORANGE);
-    chThdSleepMilliseconds(100);
-    palClearPad(GPIOE, GPIOE_LED5_ORANGE);
-    palSetPad(GPIOE, GPIOE_LED7_GREEN);
-    chThdSleepMilliseconds(100);
-    palClearPad(GPIOE, GPIOE_LED7_GREEN);
-    palSetPad(GPIOE, GPIOE_LED9_BLUE);
-    chThdSleepMilliseconds(100);
-    palClearPad(GPIOE, GPIOE_LED9_BLUE);
-    palSetPad(GPIOE, GPIOE_LED10_RED);
-    chThdSleepMilliseconds(100);
-    palClearPad(GPIOE, GPIOE_LED10_RED);
-    palSetPad(GPIOE, GPIOE_LED8_ORANGE);
-    chThdSleepMilliseconds(100);
-    palClearPad(GPIOE, GPIOE_LED8_ORANGE);
-    palSetPad(GPIOE, GPIOE_LED6_GREEN);
-    chThdSleepMilliseconds(100);
-    palClearPad(GPIOE, GPIOE_LED6_GREEN);
-    palSetPad(GPIOE, GPIOE_LED4_BLUE);
-    chThdSleepMilliseconds(100);
-    palClearPad(GPIOE, GPIOE_LED4_BLUE);
-  }
-}
 
 /*
  * Application entry point.
@@ -74,7 +41,7 @@ int main(void) {
   /*
    * Initialize LedDriver - 150 leds in chain, GPIOA pin 1
    */
-  ledDriverInit(150, GPIOA, 0b00000010, &o_fb);
+  ledDriverInit(N_LEDS, GPIOA, 0b00000010, &o_fb);
   testPatternFB(o_fb);
 
   /*
@@ -85,19 +52,98 @@ int main(void) {
   palSetPadMode(GPIOA, 9, PAL_MODE_ALTERNATE(7));
   palSetPadMode(GPIOA, 10, PAL_MODE_ALTERNATE(7));
 
-  /*
-   * Creates the example thread.
-   */
-  chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
+  const Color red   = {24,  0,  0};
+  const Color green = { 0, 24,  0};
+  const Color blue  = { 0,  0, 24};
+  const Color white = {24, 24, 24};
+  const Color black = { 0,  0,  0};
 
-  /*
-   * Normal main() thread activity, in this demo it does nothing except
-   * sleeping in a loop and check the button state, when the button is
-   * pressed the test procedure is launched.
-   */
+  //setColorRGBLocation(black, 0, 0, 0);
+  //setColorRGBLocation(black, 0, 0, 1);
+  //setColorRGBLocation(black, 0, 0, 2);
+  //setColorRGBLocation(black, 0, 1, 0);
+  //setColorRGBLocation(black, 0, 1, 1);
+  //setColorRGBLocation(black, 0, 1, 2);
+  //setColorRGBLocation(black, 0, 2, 0);
+  //setColorRGBLocation(black, 0, 2, 1);
+  //setColorRGBLocation(black, 0, 2, 2);
+  //setColorRGBLocation(black, 0, 3, 0);
+  //setColorRGBLocation(black, 1, 0, 0);
+  //setColorRGBLocation(black, 1, 0, 1);
+  //setColorRGBLocation(black, 1, 0, 2);
+  //setColorRGBLocation(black, 1, 1, 0);
+  //setColorRGBLocation(black, 1, 1, 1);
+  //setColorRGBLocation(black, 1, 1, 2);
+  //setColorRGBLocation(black, 1, 2, 0);
+  //setColorRGBLocation(black, 1, 2, 1);
+  //setColorRGBLocation(black, 1, 2, 2);
+  //setColorRGBLocation(black, 1, 3, 0);
+
   while (TRUE) {
-    if (palReadPad(GPIOA, GPIOA_BUTTON))
-      testPatternFB(o_fb);
-    chThdSleepMilliseconds(500);
+    // sides
+    int i, j;
+    for (i = 0; i < 4; i++) {
+      for (j = 0; j < 3; j++) {
+        setColorRGBLocation(green, 0, i, j);
+        setColorRGBLocation(blue, 1, i, j);
+      }
+    }
+
+    chThdSleepMilliseconds(1000);
+
+    // regions
+    for (i = 0; i < 4; i++) {
+      for (j = 0; j < 3; j++) {
+        if (i == 0) {
+          setColorRGBLocation(red, 0, i, j);
+          setColorRGBLocation(red, 1, i, j);
+        }
+        if (i == 1) {
+          setColorRGBLocation(green, 0, i, j);
+          setColorRGBLocation(green, 1, i, j);
+        }
+        if (i == 2) {
+          setColorRGBLocation(blue, 0, i, j);
+          setColorRGBLocation(blue, 1, i, j);
+        }
+        if (i == 3) {
+          setColorRGBLocation(white, 0, i, j);
+          setColorRGBLocation(white, 1, i, j);
+        }
+      }
+    }
+
+    chThdSleepMilliseconds(1000);
+
+    // indices
+    for (i = 0; i < 4; i++) {
+      for (j = 0; j < 3; j++) {
+        if (j == 0) {
+          setColorRGBLocation(red, 0, i, j);
+          setColorRGBLocation(red, 1, i, j);
+        }
+        if (j == 1) {
+          setColorRGBLocation(green, 0, i, j);
+          setColorRGBLocation(green, 1, i, j);
+        }
+        if (j == 2) {
+          setColorRGBLocation(blue, 0, i, j);
+          setColorRGBLocation(blue, 1, i, j);
+        }
+      }
+    }
+
+    chThdSleepMilliseconds(1000);
+
+    // off
+    for (i = 0; i < 4; i++) {
+      for (j = 0; j < 3; j++) {
+        setColorRGBLocation(black, 0, i, j);
+        setColorRGBLocation(black, 1, i, j);
+      }
+    }
+
+    chThdSleepMilliseconds(1000);
   }
+
 }

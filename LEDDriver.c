@@ -141,3 +141,25 @@ void testPatternFB(uint8_t *fb){
   }
 }
 
+const uint8_t front_lut[4][3] = {
+                                  { 0,  5,  3},
+                                  {13, 17, 15},
+                                  { 6, 11,  8},
+                                  {18,  0,  0}
+                                };
+const uint8_t  back_lut[4][3] = {
+                                  {16, 12, 14},
+                                  { 4,  1,  2},
+                                  {10,  7,  9},
+                                  {19,  0,  0}
+                                };
+
+void setColorRGBLocation(Color c, uint8_t back_nfront, uint8_t section, uint8_t index)
+{
+  if (section < 3  && index > 2)  return;
+  if (section == 3 && index > 0)  return;
+  if (section > 3)                return;
+
+  if (!back_nfront) setColorRGB(c, fb + 24*front_lut[section][index], sMask);
+  else              setColorRGB(c, fb +  24*back_lut[section][index], sMask);
+}
