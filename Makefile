@@ -5,7 +5,7 @@
 
 # Compiler options here.
 ifeq ($(USE_OPT),)
-  USE_OPT = -O2 -ggdb -fomit-frame-pointer -falign-functions=16
+  USE_OPT = -O2 -ggdb -fomit-frame-pointer -falign-functions=16 -fno-strict-aliasing
 endif
 
 # C specific options here (added to USE_OPT).
@@ -42,9 +42,8 @@ endif
 #
 
 # Enables the use of FPU on Cortex-M4.
-# Enable this if you really want to use the STM FWLib.
 ifeq ($(USE_FPU),)
-  USE_FPU = no
+  USE_FPU = yes
 endif
 
 # Enable this if you really want to use the STM FWLib.
@@ -71,6 +70,7 @@ include $(CHIBIOS)/os/hal/hal.mk
 include $(CHIBIOS)/os/ports/GCC/ARMCMx/STM32F3xx/port.mk
 include $(CHIBIOS)/os/kernel/kernel.mk
 include $(CHIBIOS)/test/test.mk
+include dsp_lib/dsp.mk
 
 # Define linker script file here
 LDSCRIPT= $(PORTLD)/STM32F303xC.ld
@@ -83,8 +83,10 @@ CSRC = $(PORTSRC) \
        $(HALSRC) \
        $(PLATFORMSRC) \
        $(BOARDSRC) \
-       LEDDriver.c \
+       led_driver.c \
        main.c
+
+#CSRC += $(DSPSRC)
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
@@ -176,7 +178,7 @@ DINCDIR =
 DLIBDIR =
 
 # List all default libraries here
-DLIBS =
+DLIBS = -lm
 
 #
 # End of default section
@@ -196,10 +198,10 @@ UADEFS =
 UINCDIR =
 
 # List the user directory to look for the libraries here
-ULIBDIR =
+ULIBDIR = dsp_lib
 
 # List all user libraries here
-ULIBS =
+ULIBS = -lmath_cm4f /usr/gcc-arm-none-eabi-4_8-2013q4/arm-none-eabi/lib/armv7e-m/fpu/libm.a
 
 #
 # End of user defines
