@@ -84,6 +84,7 @@ CSRC = $(PORTSRC) \
        $(PLATFORMSRC) \
        $(BOARDSRC) \
        led_driver.c \
+       $(CHIBIOS)/os/various/chprintf.c \
        main.c
 
 #CSRC += $(DSPSRC)
