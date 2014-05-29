@@ -64,7 +64,7 @@ PROJECT = ch
 
 # Imported source files and paths
 CHIBIOS = ChibiOS-RT
-include $(CHIBIOS)/boards/ST_STM32F3_LUMINEXUS/board.mk
+include $(CHIBIOS)/boards/ST_STM32F3_LUMENEXUS/board.mk
 include $(CHIBIOS)/os/hal/platforms/STM32F30x/platform.mk
 include $(CHIBIOS)/os/hal/hal.mk
 include $(CHIBIOS)/os/ports/GCC/ARMCMx/STM32F3xx/port.mk
