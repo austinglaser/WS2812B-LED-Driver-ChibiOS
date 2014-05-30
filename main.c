@@ -36,6 +36,8 @@ limitations under the License.
 #define ADC_GRP1_NUM_CHANNELS   1
 #define ADC_GRP1_BUF_DEPTH      (FFT_LENGTH*2)
 
+BinarySemaphore adc_complete;
+
 /*===========================================================================*/
 /* USB related stuff.                                                        */
 /*===========================================================================*/
@@ -358,8 +360,13 @@ size_t nx = 0, ny = 0;
 static void adccallback(ADCDriver * adcp, adcsample_t * buffer, size_t n)
 {
   (void)adcp;
+  (void)n;
 
-  if (adc_samples == buffer) memcpy(buf_samples, adc_samples, sizeof(adcsample_t)*ADC_GRP1_NUM_CHANNELS * ADC_GRP1_BUF_DEPTH);
+  if (adc_samples == buffer) {
+    palTogglePad(GPIOA, GPIOA_TX1);
+    memcpy(buf_samples, adc_samples, sizeof(adcsample_t)*ADC_GRP1_NUM_CHANNELS * ADC_GRP1_BUF_DEPTH);
+    chBSemSignal(&adc_complete);
+  }
 } 
 static void adcerrorcallback(ADCDriver * adcp, adcerror_t err)
 {
@@ -406,6 +413,10 @@ const color_rgb_t black = { 0,  0,  0};
 float32_t samples[FFT_LENGTH*2];
 float32_t fft_mag[FFT_LENGTH/2];
 
+#define N_AVG 100
+
+color_hsv_t color_array[10][N_AVG];
+
 static WORKING_AREA(wathread_leds, 512);
   __attribute__ ((__noreturn__))
 static msg_t thread_leds(void *arg)
@@ -430,11 +441,14 @@ static msg_t thread_leds(void *arg)
 
   arm_cfft_radix2_init_f32(&S, FFT_LENGTH, ifftFlag, doBitReverse);
 
+  memset(color_array, 0, sizeof(color_array));
+
   /*
    * Main loop
    */
   while (TRUE) {
-    palSetPad(GPIOA, GPIOA_TX1);                        //indicate loop beginning
+    //palSetPad(GPIOA, GPIOA_TX1);                        //indicate loop beginning
+    chBSemWait(&adc_complete);
 
     // read in sample values
     int i, j;
@@ -445,7 +459,7 @@ static msg_t thread_leds(void *arg)
 
     // perform fft
     arm_cfft_radix2_f32(&S, samples);
-    palClearPad(GPIOA, GPIOA_TX1);                      //indicate end of fft stage
+    //palClearPad(GPIOA, GPIOA_TX1);                      //indicate end of fft stage
     arm_cmplx_mag_f32(samples, fft_mag, FFT_LENGTH/2);  //calculate overall magnitude
 
     /*
@@ -539,16 +553,31 @@ static msg_t thread_leds(void *arg)
     interp_color[2][0].val = (sub_color[2].val * 2.0 + sub_color[0].val + max_color.val * 2.0)/5.0;
     interp_color[2][1].val = (sub_color[2].val * 2.0 + sub_color[1].val + max_color.val * 2.0)/5.0;
 
-    set_color_hsv_location(max_color, 0, 3, 0);
-    set_color_hsv_location(max_color, 1, 3, 0);
+    for (i = 0; i < 10; i++) {
+      for (j = N_AVG - 1; j > 0; j--) {
+        color_array[i][j] = color_array[i][j-1];
+      }
+    }
+
+    color_array[0][0] = max_color;
+    color_hsv_t c_avg = average_color_hsv(color_array[0], N_AVG);
+
+    set_color_hsv_location(c_avg, 0, 3, 0);
+    set_color_hsv_location(c_avg, 1, 3, 0);
 
     for (i = 0; i < 3; i++) {
-      set_color_hsv_location(sub_color[i], 0, i, 2);
-      set_color_hsv_location(sub_color[i], 1, i, 2);
+      color_array[i + 1][0] = sub_color[i];
+      c_avg = average_color_hsv(color_array[i + 1], N_AVG);
+
+      set_color_hsv_location(c_avg, 0, i, 2);
+      set_color_hsv_location(c_avg, 1, i, 2);
 
       for (j = 0; j < 2; j++) {
-        set_color_hsv_location(interp_color[i][j], 0, i, j);
-        set_color_hsv_location(interp_color[i][j], 1, i, j);
+        color_array[2*i + j + 4][0] = interp_color[i][j];
+        c_avg = average_color_hsv(color_array[2*i + j + 4], N_AVG);
+
+        set_color_hsv_location(c_avg, 0, i, j);
+        set_color_hsv_location(c_avg, 1, i, j);
       }
     }
 
@@ -595,8 +624,13 @@ int main(void) {
   usbStart(serusbcfg.usbp, &usbcfg);
   usbConnectBus(serusbcfg.usbp);
 
+  /* 
+   * Initialize semaphore to indicate completed ADC conversion
+   */
+  chBSemInit(&adc_complete, TRUE);
+
   /*
-   * Initialize adc thread
+   * Initialize led thread
    */
   chThdCreateStatic(wathread_leds, sizeof(wathread_leds), NORMALPRIO, thread_leds, NULL);
 

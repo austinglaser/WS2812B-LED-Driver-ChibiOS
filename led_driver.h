@@ -51,4 +51,6 @@ void push_buffer_leds(void);
 color_rgb_t convert_color_hsl_to_rgb(color_hsl_t c);
 color_rgb_t convert_color_hsv_to_rgb(color_hsv_t c);
 
+color_hsv_t average_color_hsv(color_hsv_t * c_arr, size_t n);
+
 #endif /* LEDDRIVER_H_ */
