@@ -30,7 +30,7 @@ limitations under the License.
 #define N_LEDS          20
 #define FFT_LENGTH      1024
 #define TWO_PI          (M_PI * 2.0f)
-#define SAMPLING_RATE   (72000000/8/(181.5 + 12/5))
+#define SAMPLING_RATE   (72000000/8/(181.5 + 12.5))
 #define RESOLUTION      (SAMPLING_RATE/FFT_LENGTH)
 
 #define ADC_GRP1_NUM_CHANNELS   1
@@ -460,15 +460,15 @@ static msg_t thread_leds(void *arg)
     float freqs[4];
     uint32_t bins[4];
     // find max value and location between ~226 and ~2000 hz
-    arm_max_f32(fft_mag + 20, 85, &max_value, &max_index);
-    freqs[0] = (max_index + 20)*RESOLUTION;
-    bins[0] = max_index + 20;
+    arm_max_f32(fft_mag + 10, 90, &max_value, &max_index);
+    freqs[0] = (max_index + 10)*RESOLUTION;
+    bins[0] = max_index + 10;
     
 
-    // figure out float32_ting magnitude
+    // figure out floating magnitude
     float32_t magnitude = (max_value/1024.0);
 
-    color_hsv_t max_color = {(((float32_t) max_index)/65.0), 1.0, magnitude};
+    color_hsv_t max_color = {(((float32_t) max_index)/80.0), 1.0, magnitude/6.0};
 
     /*
        float last = max_value;
@@ -483,22 +483,22 @@ static msg_t thread_leds(void *arg)
        fft_mag[i] = 0.0;
        }
      */
-    fft_mag[max_index + 20] = 0.0;
+    fft_mag[max_index + 10] = 0.0;
 
     color_hsv_t sub_color[3];
 
     for (i = 0; i < 3; i++)  {
       // find max value and location between ~226 and ~2000 hz
-      arm_max_f32(fft_mag + 20, 85, &max_value, &max_index);
-      freqs[i+1] = (max_index + 20)*RESOLUTION;
-      bins[i+1] = max_index + 20;
+      arm_max_f32(fft_mag + 10, 90, &max_value, &max_index);
+      freqs[i+1] = (max_index + 10)*RESOLUTION;
+      bins[i+1] = max_index + 10;
 
       // figure out float32_ting magnitude
       magnitude = (max_value/1024.0);
 
-      sub_color[i].hue = (((float32_t) max_index)/65.0);
+      sub_color[i].hue = (((float32_t) max_index)/80.0);
       sub_color[i].sat = 1.0;
-      sub_color[i].val = magnitude/8.0;
+      sub_color[i].val = magnitude/6.0;
 
       /*
          last = max_value;
@@ -513,7 +513,7 @@ static msg_t thread_leds(void *arg)
          fft_mag[i] = 0.0;
          }
        */
-      fft_mag[max_index + 20] = 0.0;
+      fft_mag[max_index + 10] = 0.0;
     }
 
     color_hsv_t interp_color[3][2];
