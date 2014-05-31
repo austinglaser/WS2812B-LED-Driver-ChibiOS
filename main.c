@@ -26,15 +26,9 @@ limitations under the License.
 #include "shell.h"
 #include "chprintf.h"
 #include "led_driver.h"
+#include "MPU9150.h"
 
-#define N_LEDS          20
-#define FFT_LENGTH      1024
-#define TWO_PI          (M_PI * 2.0f)
-#define SAMPLING_RATE   (72000000/8/(181.5 + 12/5))
-#define RESOLUTION      (SAMPLING_RATE/FFT_LENGTH)
-
-#define ADC_GRP1_NUM_CHANNELS   1
-#define ADC_GRP1_BUF_DEPTH      (FFT_LENGTH*2)
+#define N_LEDS 20
 
 /*===========================================================================*/
 /* USB related stuff.                                                        */
@@ -350,218 +344,44 @@ static const SerialUSBConfig serusbcfg = {
 BaseSequentialStream *USBout = (BaseSequentialStream *)&SDU1;
 BaseChannel *USBin = (BaseChannel *)&SDU1;
 
-static adcsample_t adc_samples[ADC_GRP1_NUM_CHANNELS * ADC_GRP1_BUF_DEPTH];
-static adcsample_t buf_samples[ADC_GRP1_NUM_CHANNELS * ADC_GRP1_BUF_DEPTH];
-float32_t avg;
-
-size_t nx = 0, ny = 0;
-static void adccallback(ADCDriver * adcp, adcsample_t * buffer, size_t n)
-{
-  (void)adcp;
-
-  if (adc_samples == buffer) memcpy(buf_samples, adc_samples, sizeof(adcsample_t)*ADC_GRP1_NUM_CHANNELS * ADC_GRP1_BUF_DEPTH);
-} 
-static void adcerrorcallback(ADCDriver * adcp, adcerror_t err)
-{
-  (void) adcp;
-  (void) err;
-}
-
-static const ADCConversionGroup adcgrpcfg1 = {
-  TRUE,                         /* Circular       */
-  ADC_GRP1_NUM_CHANNELS,        /* Num Channels   */
-  adccallback,                  /* End callback   */
-  adcerrorcallback,             /* Error callback */
-  0,                            /* CFGR           */
-  ADC_TR(0, 4095),              /* TR1            */
-  0,                            /* CR             */
-  {                             /* SMPR[2]        */
-    0,
-    ADC_SMPR2_SMP_AN12(ADC_SMPR_SMP_181P5)
-  },
-  {                             /* SQR[4]         */
-    ADC_SQR1_NUM_CH(ADC_GRP1_NUM_CHANNELS) | ADC_SQR1_SQ1_N(ADC_CHANNEL_IN12),
-    0,
-    0,
-    0
-  }
+const I2CConfig mpu9150_config = { 
+  STM32_TIMINGR_PRESC(15U) |
+  STM32_TIMINGR_SCLDEL(4U) | STM32_TIMINGR_SDADEL(2U) |
+  STM32_TIMINGR_SCLH(15U)  | STM32_TIMINGR_SCLL(21U),
+  0,  
+  0
 };
 
 
-float32_t average_array(adcsample_t * buffer, size_t len)
-{
-  float32_t sum = 0;
-  uint32_t i;
-  for (i = 0; i < len; i++) sum += buffer[i];
+static uint8_t *o_fb;
+static uint16_t gpio_pin1_mask = 0b0000000000000010;
 
-  return sum/((float32_t) len);
-}
+static const color_rgb_t red = {100, 0, 0};
+static const color_rgb_t green = {0, 100, 0};
+static const color_rgb_t blue = {0, 0, 100};
 
-const color_rgb_t red   = {24,  0,  0};
-const color_rgb_t green = { 0, 24,  0};
-const color_rgb_t blue  = { 0,  0, 24};
-const color_rgb_t white = {24, 24, 24};
-const color_rgb_t black = { 0,  0,  0};
-
-float32_t samples[FFT_LENGTH*2];
-float32_t fft_mag[FFT_LENGTH/2];
-
+/*
 static WORKING_AREA(wathread_leds, 512);
   __attribute__ ((__noreturn__))
 static msg_t thread_leds(void *arg)
 {
+
   (void) arg;
-  chRegSetThreadName("leds");
-
-  /*
-   * Use TX1 as a timing output
-   */
-  palSetPadMode(GPIOA, GPIOA_TX1, PAL_MODE_OUTPUT_PUSHPULL);
-  palSetPad(GPIOA, GPIOA_TX1);
-
-  /* 
-   * FPU INIT
-   */
-  const uint32_t ifftFlag = 0;
-  const uint32_t doBitReverse = 1;
-  arm_cfft_radix2_instance_f32 S;
-  float32_t max_value = 0;
-  uint32_t max_index = 0;
-
-  arm_cfft_radix2_init_f32(&S, FFT_LENGTH, ifftFlag, doBitReverse);
-
-  /*
-   * Main loop
-   */
   while (TRUE) {
-    palSetPad(GPIOA, GPIOA_TX1);                        //indicate loop beginning
+    //chprintf(USBout, "red\r\n");
+    set_color_rgb(red, o_fb, gpio_pin1_mask);
+    chThdSleepMilliseconds(1000);
 
-    // read in sample values
-    int i, j;
-    for (i = 0; i < FFT_LENGTH; i++) {
-      samples[i*2]     = ((((float32_t) buf_samples[i]) - 2700.0)); //real
-      samples[i*2 + 1] = 0.0;                                       //complex
-    }
+    //chprintf(USBout, "green\r\n");
+    set_color_rgb(green, o_fb, gpio_pin1_mask);
+    chThdSleepMilliseconds(1000);
 
-    // perform fft
-    arm_cfft_radix2_f32(&S, samples);
-    palClearPad(GPIOA, GPIOA_TX1);                      //indicate end of fft stage
-    arm_cmplx_mag_f32(samples, fft_mag, FFT_LENGTH/2);  //calculate overall magnitude
-
-    /*
-    chprintf(USBout, "sampledata = [");
-    for (i = 0; i < FFT_LENGTH/2; i++) {
-      chprintf(USBout, "%D,", (int64_t) fft_mag[i]);
-    }
-    chprintf(USBout,"];\r\n");
-    */
-
-
-    float freqs[4];
-    uint32_t bins[4];
-    // find max value and location between ~226 and ~2000 hz
-    arm_max_f32(fft_mag + 20, 85, &max_value, &max_index);
-    freqs[0] = (max_index + 20)*RESOLUTION;
-    bins[0] = max_index + 20;
-    
-
-    // figure out float32_ting magnitude
-    float32_t magnitude = (max_value/1024.0);
-
-    color_hsv_t max_color = {(((float32_t) max_index)/65.0), 1.0, magnitude};
-
-    /*
-       float last = max_value;
-       for (i = max_index; last >= fft_mag[i]; i++) {
-       last = fft_mag[i];
-       fft_mag[i] = 0.0;
-       }
-
-       last = max_value;
-       for (i = max_index - 1; last >= fft_mag[i]; i--) {
-       last = fft_mag[i];
-       fft_mag[i] = 0.0;
-       }
-     */
-    fft_mag[max_index + 20] = 0.0;
-
-    color_hsv_t sub_color[3];
-
-    for (i = 0; i < 3; i++)  {
-      // find max value and location between ~226 and ~2000 hz
-      arm_max_f32(fft_mag + 20, 85, &max_value, &max_index);
-      freqs[i+1] = (max_index + 20)*RESOLUTION;
-      bins[i+1] = max_index + 20;
-
-      // figure out float32_ting magnitude
-      magnitude = (max_value/1024.0);
-
-      sub_color[i].hue = (((float32_t) max_index)/65.0);
-      sub_color[i].sat = 1.0;
-      sub_color[i].val = magnitude/8.0;
-
-      /*
-         last = max_value;
-         for (i = max_index; last >= fft_mag[i]; i++) {
-         last = fft_mag[i];
-         fft_mag[i] = 0.0;
-         }
-
-         last = max_value;
-         for (i = max_index - 1; last >= fft_mag[i]; i--) {
-         last = fft_mag[i];
-         fft_mag[i] = 0.0;
-         }
-       */
-      fft_mag[max_index + 20] = 0.0;
-    }
-
-    color_hsv_t interp_color[3][2];
-
-    interp_color[0][0].hue = (sub_color[0].hue * 2.0 + sub_color[1].hue + max_color.hue * 2.0)/5.0;
-    interp_color[0][1].hue = (sub_color[0].hue * 2.0 + sub_color[2].hue + max_color.hue * 2.0)/5.0;
-    interp_color[1][0].hue = (sub_color[1].hue * 2.0 + sub_color[2].hue + max_color.hue * 2.0)/5.0;
-    interp_color[1][1].hue = (sub_color[1].hue * 2.0 + sub_color[0].hue + max_color.hue * 2.0)/5.0;
-    interp_color[2][0].hue = (sub_color[2].hue * 2.0 + sub_color[0].hue + max_color.hue * 2.0)/5.0;
-    interp_color[2][1].hue = (sub_color[2].hue * 2.0 + sub_color[1].hue + max_color.hue * 2.0)/5.0;
-
-    interp_color[0][0].sat = (sub_color[0].sat * 2.0 + sub_color[1].sat + max_color.sat * 2.0)/5.0;
-    interp_color[0][1].sat = (sub_color[0].sat * 2.0 + sub_color[2].sat + max_color.sat * 2.0)/5.0;
-    interp_color[1][0].sat = (sub_color[1].sat * 2.0 + sub_color[2].sat + max_color.sat * 2.0)/5.0;
-    interp_color[1][1].sat = (sub_color[1].sat * 2.0 + sub_color[0].sat + max_color.sat * 2.0)/5.0;
-    interp_color[2][0].sat = (sub_color[2].sat * 2.0 + sub_color[0].sat + max_color.sat * 2.0)/5.0;
-    interp_color[2][1].sat = (sub_color[2].sat * 2.0 + sub_color[1].sat + max_color.sat * 2.0)/5.0;
-
-    interp_color[0][0].val = (sub_color[0].val * 2.0 + sub_color[1].val + max_color.val * 2.0)/5.0;
-    interp_color[0][1].val = (sub_color[0].val * 2.0 + sub_color[2].val + max_color.val * 2.0)/5.0;
-    interp_color[1][0].val = (sub_color[1].val * 2.0 + sub_color[2].val + max_color.val * 2.0)/5.0;
-    interp_color[1][1].val = (sub_color[1].val * 2.0 + sub_color[0].val + max_color.val * 2.0)/5.0;
-    interp_color[2][0].val = (sub_color[2].val * 2.0 + sub_color[0].val + max_color.val * 2.0)/5.0;
-    interp_color[2][1].val = (sub_color[2].val * 2.0 + sub_color[1].val + max_color.val * 2.0)/5.0;
-
-    set_color_hsv_location(max_color, 0, 3, 0);
-    set_color_hsv_location(max_color, 1, 3, 0);
-
-    for (i = 0; i < 3; i++) {
-      set_color_hsv_location(sub_color[i], 0, i, 2);
-      set_color_hsv_location(sub_color[i], 1, i, 2);
-
-      for (j = 0; j < 2; j++) {
-        set_color_hsv_location(interp_color[i][j], 0, i, j);
-        set_color_hsv_location(interp_color[i][j], 1, i, j);
-      }
-    }
-
-    push_buffer_leds();
-
-    /*
-    for (i = 0; i < 4; i++) chprintf(USBout, "%D ", (uint64_t) bins[i]);
-    chprintf(USBout, "\r\n");
-    */
-    
+    //chprintf(USBout, "blue\r\n");
+    set_color_rgb(blue, o_fb, gpio_pin1_mask);
+    chThdSleepMilliseconds(1000);
   }
 }
-
+*/
 
 /*
  * Application entry point.
@@ -577,7 +397,6 @@ int main(void) {
    */
   halInit();
   chSysInit();
-
 
   /*
    * Initializes a serial-over-USB CDC driver.
@@ -595,49 +414,28 @@ int main(void) {
   usbStart(serusbcfg.usbp, &usbcfg);
   usbConnectBus(serusbcfg.usbp);
 
+  /*  
+   * Starting the I2C driver 1.
+   */
+  i2cStart(&I2CD1, &mpu9150_config);
+
   /*
-   * Initialize adc thread
+   * Start MPU9150
    */
-  chThdCreateStatic(wathread_leds, sizeof(wathread_leds), NORMALPRIO, thread_leds, NULL);
-
-  uint8_t *o_fb;
-  uint16_t gpio_pin1_mask = 0b0000000000000010;
-
-  /* 
-   * Set gain for mic pre-amp (high = 40 dB, low = 50 dB, float32_ting = 60 dB)
-   */
-  //palSetPadMode(GPIOB, GPIOB_GAIN, PAL_MODE_INPUT);           // float32_ting input = 60 dB
-  palSetPadMode(GPIOB, GPIOB_GAIN, PAL_MODE_OUTPUT_PUSHPULL);   // drive high or low
-  palSetPad(GPIOB, GPIOB_GAIN);                                 // drive high = 40 dB
-  //palsClearPad(GPIOB, GPIOB_GAIN);                            // drive low = 50 dB
-
+  mpu9150_start(&I2CD1);
+  mpu9150_write_pm1(&I2CD1, 0x00);
 
   /*
    * Initialize LedDriver - 20 leds in chain, GPIOA pin 1
    */
   led_driver_init(N_LEDS, GPIOA, gpio_pin1_mask, &o_fb);
 
-  /*
-   * ADC Initialization
-   */
-  adcStart(&ADCD3, NULL);
-
-  /*
-   * Start on continuous conversion
-   */
-  adcStartConversion(&ADCD3, &adcgrpcfg1, adc_samples, ADC_GRP1_BUF_DEPTH);
-
-  /*
-   * Activates the serial driver 1 using the driver default configuration.
-   * PA9(TX) and PA10(RX) are routed to USART1.
-   */
-  sdStart(&SD1, NULL);
-  palSetPadMode(GPIOA, 9, PAL_MODE_ALTERNATE(7));
-  palSetPadMode(GPIOA, 10, PAL_MODE_ALTERNATE(7));
-
-
+  color_rgb_t c;
   while (TRUE) {
-    chThdSleepMilliseconds(1000);
-  }
+    MPU9150_accel_data d;
+    mpu9150_a_read_x_y_z(&I2CD1, &d);
+    chprintf(USBout, "%d, %d, %d\r\n", d.x, d.y, d.z);
 
+    chThdSleepMilliseconds(100);
+  }
 }
