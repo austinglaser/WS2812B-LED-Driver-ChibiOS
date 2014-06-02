@@ -28,9 +28,11 @@ limitations under the License.
 #include "led_driver.h"
 
 #define N_LEDS          20
-#define FFT_LENGTH      512
+#define N_AVG           50
+
+#define FFT_LENGTH      1024
 #define TWO_PI          (M_PI * 2.0f)
-#define SAMPLING_RATE   (72000000/8/(181.5 + 12.5))
+#define SAMPLING_RATE   (72000000/8/(601.5 + 12.5))
 #define RESOLUTION      (SAMPLING_RATE/FFT_LENGTH)
 
 #define ADC_GRP1_NUM_CHANNELS   1
@@ -442,7 +444,6 @@ const color_rgb_t black = { 0,  0,  0};
 float32_t samples[FFT_LENGTH*2];
 float32_t fft_mag[FFT_LENGTH/2];
 
-#define N_AVG 20
 
 color_hsv_t color_array[10][N_AVG];
 
@@ -494,18 +495,20 @@ static msg_t thread_leds(void *arg) {
     //palClearPad(GPIOA, GPIOA_TX1);                    //indicate end of fft stage
     arm_cmplx_mag_f32(samples, fft_mag, FFT_LENGTH/2);  //calculate overall magnitude
 
-    float freqs[4];
-    uint32_t bins[4];
+    //float freqs[4];
+    //uint32_t bins[4];
     // find max value and location between ~226 and ~2000 hz
-    arm_max_f32(fft_mag + 5, 45, &max_value, &max_index);
-    freqs[0] = (max_index + 5)*RESOLUTION;
-    bins[0] = max_index + 5;
+    arm_max_f32(fft_mag + 5, 35, &max_value, &max_index);
+    //freqs[0] = (max_index + 5)*RESOLUTION;
+    //bins[0] = max_index + 5;
     
 
     // figure out floating magnitude
-    float32_t magnitude = (max_value/512.0);
+    float32_t magnitude = (max_value/1024.0);
+    //chprintf(USBout, "%D\r\n", (int64_t) (magnitude*100.0));
 
-    color_hsv_t max_color = {(((float32_t) max_index)/40.0), 1.0, magnitude/12.0};
+    //color_hsv_t max_color = {(((float32_t) max_index)/49.0), 1.0, magnitude/42.0};
+    color_hsv_t max_color = {(((float32_t) max_index)/32.0), 1.0, magnitude/30.0};
 
     /*
        float last = max_value;
@@ -526,16 +529,17 @@ static msg_t thread_leds(void *arg) {
 
     for (i = 0; i < 3; i++)  {
       // find max value and location between ~226 and ~2000 hz
-      arm_max_f32(fft_mag + 5, 45, &max_value, &max_index);
-      freqs[i+1] = (max_index + 5)*RESOLUTION;
-      bins[i+1] = max_index + 5;
+      arm_max_f32(fft_mag + 5, 35, &max_value, &max_index);
+      //freqs[i+1] = (max_index + 5)*RESOLUTION;
+      //bins[i+1] = max_index + 5;
 
       // figure out float32_ting magnitude
       magnitude = (max_value/1024.0);
 
-      sub_color[i].hue = (((float32_t) max_index)/40.0);
+      sub_color[i].hue = (((float32_t) max_index)/32.0);
       sub_color[i].sat = 1.0;
-      sub_color[i].val = magnitude/12.0;
+      sub_color[i].val = magnitude/30.0;
+      //sub_color[i].val = magnitude/42.0;
 
       /*
          last = max_value;
@@ -576,6 +580,9 @@ static msg_t thread_leds(void *arg) {
     interp_color[2][0].val = (sub_color[2].val * 2.0 + sub_color[0].val + max_color.val * 2.0)/5.0;
     interp_color[2][1].val = (sub_color[2].val * 2.0 + sub_color[1].val + max_color.val * 2.0)/5.0;
 
+    //uint32_t n_avg = (uint32_t) 35.0 + (magnitude - 10.0)/25.0;
+    //uint32_t n_avg = 50;
+    //if (n_avg > 100) n_avg = 100;
 
     for (i = 0; i < 10; i++) {
       for (j = N_AVG - 1; j > 0; j--) {
@@ -599,7 +606,6 @@ static msg_t thread_leds(void *arg) {
       for (j = 0; j < 2; j++) {
         color_array[2*i + j + 4][0] = interp_color[i][j];
         c_avg = average_color_hsv(color_array[2*i + j + 4], N_AVG);
-
         set_color_hsv_location(c_avg, 0, i, j);
         set_color_hsv_location(c_avg, 1, i, j);
 
@@ -705,4 +711,5 @@ int main(void) {
   //  chThdSleepMilliseconds(10);
   //}
 
+  return 0;
 }
