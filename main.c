@@ -391,7 +391,7 @@ static const ADCConversionGroup adcgrpcfg1 = {
   0,                            /* CR             */
   {                             /* SMPR[2]        */
     0,
-    ADC_SMPR2_SMP_AN12(ADC_SMPR_SMP_181P5)
+    ADC_SMPR2_SMP_AN12(ADC_SMPR_SMP_601P5)
   },
   {                             /* SQR[4]         */
     ADC_SQR1_NUM_CH(ADC_GRP1_NUM_CHANNELS) | ADC_SQR1_SQ1_N(ADC_CHANNEL_IN12),
@@ -497,15 +497,15 @@ static msg_t thread_leds(void *arg) {
     float freqs[4];
     uint32_t bins[4];
     // find max value and location between ~226 and ~2000 hz
-    arm_max_f32(fft_mag + 10, 90, &max_value, &max_index);
-    freqs[0] = (max_index + 10)*RESOLUTION;
-    bins[0] = max_index + 10;
+    arm_max_f32(fft_mag + 5, 45, &max_value, &max_index);
+    freqs[0] = (max_index + 5)*RESOLUTION;
+    bins[0] = max_index + 5;
     
 
     // figure out floating magnitude
     float32_t magnitude = (max_value/512.0);
 
-    color_hsv_t max_color = {(((float32_t) max_index)/80.0), 1.0, magnitude/6.0};
+    color_hsv_t max_color = {(((float32_t) max_index)/40.0), 1.0, magnitude/12.0};
 
     /*
        float last = max_value;
@@ -520,22 +520,22 @@ static msg_t thread_leds(void *arg) {
        fft_mag[i] = 0.0;
        }
      */
-    fft_mag[max_index + 10] = 0.0;
+    fft_mag[max_index + 5] = 0.0;
 
     color_hsv_t sub_color[3];
 
     for (i = 0; i < 3; i++)  {
       // find max value and location between ~226 and ~2000 hz
-      arm_max_f32(fft_mag + 10, 90, &max_value, &max_index);
-      freqs[i+1] = (max_index + 10)*RESOLUTION;
-      bins[i+1] = max_index + 10;
+      arm_max_f32(fft_mag + 5, 45, &max_value, &max_index);
+      freqs[i+1] = (max_index + 5)*RESOLUTION;
+      bins[i+1] = max_index + 5;
 
       // figure out float32_ting magnitude
       magnitude = (max_value/1024.0);
 
-      sub_color[i].hue = (((float32_t) max_index)/80.0);
+      sub_color[i].hue = (((float32_t) max_index)/40.0);
       sub_color[i].sat = 1.0;
-      sub_color[i].val = magnitude/6.0;
+      sub_color[i].val = magnitude/12.0;
 
       /*
          last = max_value;
@@ -550,7 +550,7 @@ static msg_t thread_leds(void *arg) {
          fft_mag[i] = 0.0;
          }
        */
-      fft_mag[max_index + 10] = 0.0;
+      fft_mag[max_index + 5] = 0.0;
     }
 
     color_hsv_t interp_color[3][2];
@@ -602,6 +602,9 @@ static msg_t thread_leds(void *arg) {
 
         set_color_hsv_location(c_avg, 0, i, j);
         set_color_hsv_location(c_avg, 1, i, j);
+
+        //set_color_hsv_location(interp_color[i][j], 0, i, j);
+        //set_color_hsv_location(interp_color[i][j], 1, i, j);
       }
     }
 

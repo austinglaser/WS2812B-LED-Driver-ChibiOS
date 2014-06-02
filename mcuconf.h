@@ -48,8 +48,8 @@
 #define STM32_PPRE1                         STM32_PPRE1_DIV2
 #define STM32_PPRE2                         STM32_PPRE2_DIV2
 #define STM32_MCOSEL                        STM32_MCOSEL_NOCLOCK
-#define STM32_ADC12PRES                     STM32_ADC12PRES_DIV8
-#define STM32_ADC34PRES                     STM32_ADC34PRES_DIV8
+#define STM32_ADC12PRES                     STM32_ADC12PRES_DIV32
+#define STM32_ADC34PRES                     STM32_ADC34PRES_DIV32
 #define STM32_USART1SW                      STM32_USART1SW_PCLK
 #define STM32_USART2SW                      STM32_USART2SW_PCLK
 #define STM32_USART3SW                      STM32_USART3SW_PCLK
@@ -155,11 +155,11 @@
 #define STM32_PWM_USE_TIM3                  TRUE
 #define STM32_PWM_USE_TIM4                  FALSE
 #define STM32_PWM_USE_TIM8                  FALSE
-#define STM32_PWM_TIM1_IRQ_PRIORITY         4
-#define STM32_PWM_TIM2_IRQ_PRIORITY         4
-#define STM32_PWM_TIM3_IRQ_PRIORITY         4
-#define STM32_PWM_TIM4_IRQ_PRIORITY         4
-#define STM32_PWM_TIM8_IRQ_PRIORITY         4
+#define STM32_PWM_TIM1_IRQ_PRIORITY         3
+#define STM32_PWM_TIM2_IRQ_PRIORITY         3
+#define STM32_PWM_TIM3_IRQ_PRIORITY         3
+#define STM32_PWM_TIM4_IRQ_PRIORITY         3
+#define STM32_PWM_TIM8_IRQ_PRIORITY         3
 
 /*
  * SERIAL driver system settings.
