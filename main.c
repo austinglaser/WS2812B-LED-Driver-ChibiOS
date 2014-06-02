@@ -28,7 +28,7 @@ limitations under the License.
 #include "led_driver.h"
 
 #define N_LEDS          20
-#define FFT_LENGTH      1024
+#define FFT_LENGTH      512
 #define TWO_PI          (M_PI * 2.0f)
 #define SAMPLING_RATE   (72000000/8/(181.5 + 12.5))
 #define RESOLUTION      (SAMPLING_RATE/FFT_LENGTH)
@@ -353,20 +353,27 @@ BaseSequentialStream *USBout = (BaseSequentialStream *)&SDU1;
 BaseChannel *USBin = (BaseChannel *)&SDU1;
 
 static adcsample_t adc_samples[ADC_GRP1_NUM_CHANNELS * ADC_GRP1_BUF_DEPTH];
-static adcsample_t buf_samples[ADC_GRP1_NUM_CHANNELS * ADC_GRP1_BUF_DEPTH];
+static adcsample_t buf_samples[FFT_LENGTH*2];
 float32_t avg;
 
-size_t nx = 0, ny = 0;
+size_t num_samples = 0;
 static void adccallback(ADCDriver * adcp, adcsample_t * buffer, size_t n)
 {
   (void)adcp;
   (void)n;
 
+
   if (adc_samples == buffer) {
     palTogglePad(GPIOA, GPIOA_TX1);
-    memcpy(buf_samples, adc_samples, sizeof(adcsample_t)*ADC_GRP1_NUM_CHANNELS * ADC_GRP1_BUF_DEPTH);
     chBSemSignal(&adc_complete);
+    memcpy(buf_samples, adc_samples, FFT_LENGTH*2);
   }
+
+  //if (adc_samples == buffer) {
+  //  palTogglePad(GPIOA, GPIOA_TX1);
+  //  memcpy(buf_samples, adc_samples, sizeof(adcsample_t)*ADC_GRP1_NUM_CHANNELS * ADC_GRP1_BUF_DEPTH);
+  //  chBSemSignal(&adc_complete);
+  //}
 } 
 static void adcerrorcallback(ADCDriver * adcp, adcerror_t err)
 {
@@ -394,6 +401,28 @@ static const ADCConversionGroup adcgrpcfg1 = {
   }
 };
 
+/*===========================================================================*/
+/* Timer related stuff.                                                      */
+/*===========================================================================*/
+
+//static void gpt_adc_trigger(GPTDriver *gpt_ptr) 
+//{ 
+//  (void) gpt_ptr;
+//
+//  adcStartConversion(&ADCD3, &adcgrpcfg1, adc_samples, ADC_GRP1_BUF_DEPTH);
+//  //palTogglePad(GPIOA, GPIOA_TX1); 
+//}
+//
+///* 
+// * Configure a GPT object 
+// */ 
+//static GPTConfig gpt_adc_config = 
+//{ 
+//  1000000,  // timer clock: 1Mhz 
+//  gpt_adc_trigger,  // Timer callback function 
+//  0
+//};
+
 
 float32_t average_array(adcsample_t * buffer, size_t len)
 {
@@ -413,14 +442,14 @@ const color_rgb_t black = { 0,  0,  0};
 float32_t samples[FFT_LENGTH*2];
 float32_t fft_mag[FFT_LENGTH/2];
 
-#define N_AVG 100
+#define N_AVG 20
 
 color_hsv_t color_array[10][N_AVG];
 
 static WORKING_AREA(wathread_leds, 512);
   __attribute__ ((__noreturn__))
-static msg_t thread_leds(void *arg)
-{
+static msg_t thread_leds(void *arg) {
+
   (void) arg;
   chRegSetThreadName("leds");
 
@@ -428,7 +457,10 @@ static msg_t thread_leds(void *arg)
    * Use TX1 as a timing output
    */
   palSetPadMode(GPIOA, GPIOA_TX1, PAL_MODE_OUTPUT_PUSHPULL);
+  palSetPadMode(GPIOA, GPIOA_RX1, PAL_MODE_OUTPUT_PUSHPULL);
+
   palSetPad(GPIOA, GPIOA_TX1);
+  palSetPad(GPIOA, GPIOA_RX1);
 
   /* 
    * FPU INIT
@@ -459,17 +491,8 @@ static msg_t thread_leds(void *arg)
 
     // perform fft
     arm_cfft_radix2_f32(&S, samples);
-    //palClearPad(GPIOA, GPIOA_TX1);                      //indicate end of fft stage
+    //palClearPad(GPIOA, GPIOA_TX1);                    //indicate end of fft stage
     arm_cmplx_mag_f32(samples, fft_mag, FFT_LENGTH/2);  //calculate overall magnitude
-
-    /*
-    chprintf(USBout, "sampledata = [");
-    for (i = 0; i < FFT_LENGTH/2; i++) {
-      chprintf(USBout, "%D,", (int64_t) fft_mag[i]);
-    }
-    chprintf(USBout,"];\r\n");
-    */
-
 
     float freqs[4];
     uint32_t bins[4];
@@ -480,7 +503,7 @@ static msg_t thread_leds(void *arg)
     
 
     // figure out floating magnitude
-    float32_t magnitude = (max_value/1024.0);
+    float32_t magnitude = (max_value/512.0);
 
     color_hsv_t max_color = {(((float32_t) max_index)/80.0), 1.0, magnitude/6.0};
 
@@ -553,6 +576,7 @@ static msg_t thread_leds(void *arg)
     interp_color[2][0].val = (sub_color[2].val * 2.0 + sub_color[0].val + max_color.val * 2.0)/5.0;
     interp_color[2][1].val = (sub_color[2].val * 2.0 + sub_color[1].val + max_color.val * 2.0)/5.0;
 
+
     for (i = 0; i < 10; i++) {
       for (j = N_AVG - 1; j > 0; j--) {
         color_array[i][j] = color_array[i][j-1];
@@ -583,6 +607,8 @@ static msg_t thread_leds(void *arg)
 
     push_buffer_leds();
 
+    palTogglePad(GPIOA, GPIOA_RX1);
+
     /*
     for (i = 0; i < 4; i++) chprintf(USBout, "%D ", (uint64_t) bins[i]);
     chprintf(USBout, "\r\n");
@@ -606,7 +632,6 @@ int main(void) {
    */
   halInit();
   chSysInit();
-
 
   /*
    * Initializes a serial-over-USB CDC driver.
@@ -651,6 +676,9 @@ int main(void) {
    */
   led_driver_init(N_LEDS, GPIOA, gpio_pin1_mask, &o_fb);
 
+  //gptStart(&GPTD1, &gpt_adc_config); 
+  //gptStartContinuous(&GPTD1, 25);
+
   /*
    * ADC Initialization
    */
@@ -665,13 +693,13 @@ int main(void) {
    * Activates the serial driver 1 using the driver default configuration.
    * PA9(TX) and PA10(RX) are routed to USART1.
    */
-  sdStart(&SD1, NULL);
-  palSetPadMode(GPIOA, 9, PAL_MODE_ALTERNATE(7));
-  palSetPadMode(GPIOA, 10, PAL_MODE_ALTERNATE(7));
+  //sdStart(&SD1, NULL);
+  //palSetPadMode(GPIOA, 9, PAL_MODE_ALTERNATE(7));
+  //palSetPadMode(GPIOA, 10, PAL_MODE_ALTERNATE(7));
 
 
-  while (TRUE) {
-    chThdSleepMilliseconds(1000);
-  }
+  //while (TRUE) {
+  //  chThdSleepMilliseconds(10);
+  //}
 
 }
