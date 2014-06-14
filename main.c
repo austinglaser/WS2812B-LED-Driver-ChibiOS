@@ -646,7 +646,7 @@ int main(void) {
       //c.blue = b*255/32768;
 
       c.red = r/4;
-      c.green = g/4;
+      c.green = g/40;
       c.blue = b/4;
 
       for (i = N_LEDS - 1; i > 0; i--) led[i] = led[i - 1];
