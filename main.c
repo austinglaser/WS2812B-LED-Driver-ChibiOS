@@ -28,7 +28,188 @@ limitations under the License.
 #include "led_driver.h"
 #include "MPU9150.h"
 
-#define N_LEDS 20
+#define N_LEDS 240
+/*===========================================================================*/
+/* Timer related stuff.                                                      */
+/*===========================================================================*/
+
+GPTConfig i2c_timer = {
+  1000000,
+  NULL,
+  0         /* DIER */
+};
+
+/*===========================================================================*/
+/* I2C related stuff.                                                        */
+/*===========================================================================*/
+
+// Hardware-specific support functions that MUST be customized:
+#define I2CSPEED 100
+void I2C_delay(void) 
+{
+  gptPolledDelay(&GPTD1, 10); //wait 10 us
+}
+
+bool read_SCL(void) // Set SCL as input and return current level of line, 0 or 1
+{
+  palWritePad(GPIOB, GPIOB_IMU_SCL, 1);
+
+  return palReadPad(GPIOB, GPIOB_IMU_SCL);
+}
+bool read_SDA(void) // Set SDA as input and return current level of line, 0 or 1
+{
+  palWritePad(GPIOB, GPIOB_IMU_SDA, 1);
+
+  return palReadPad(GPIOB, GPIOB_IMU_SDA);
+}
+void clear_SCL(void) // Actively drive SCL signal low
+{
+  palWritePad(GPIOB, GPIOB_IMU_SCL, 0);
+}
+void clear_SDA(void) // Actively drive SDA signal low
+{
+  palWritePad(GPIOB, GPIOB_IMU_SDA, 0);
+}
+
+bool started = false; // global data
+int i2c_start_cond(void) {
+  if (started) { // if started, do a restart cond
+    // set SDA to 1
+    read_SDA();
+    I2C_delay();
+    while (read_SCL() == 0) {  // Clock stretching
+      // You should add timeout to this loop
+    }
+    // Repeated start setup time, minimum 4.7us
+    I2C_delay();
+  }
+  if (read_SDA() == 0) {
+    return 1;
+  }
+  // SCL is high, set SDA from 1 to 0.
+  clear_SDA();
+  I2C_delay();
+  clear_SCL();
+  started = true;
+
+  return 0;
+}
+
+int i2c_stop_cond(void){
+  // set SDA to 0
+  clear_SDA();
+  I2C_delay();
+  // Clock stretching
+  while (read_SCL() == 0) {
+    // add timeout to this loop.
+  }
+  // Stop bit setup time, minimum 4us
+  I2C_delay();
+  // SCL is high, set SDA from 0 to 1
+  if (read_SDA() == 0) {
+    return -1;
+  }
+  I2C_delay();
+  started = false;
+
+  return 0;
+}
+
+// Write a bit to I2C bus
+int i2c_write_bit(bool bit) {
+  if (bit) {
+    read_SDA();
+  } else {
+    clear_SDA();
+  }
+  I2C_delay();
+  while (read_SCL() == 0) { // Clock stretching
+    // You should add timeout to this loop
+  }
+  // SCL is high, now data is valid
+  // If SDA is high, check that nobody else is driving SDA
+  if (bit && read_SDA() == 0) {
+    return 1;
+  }
+  I2C_delay();
+  clear_SCL();
+
+  return 0;
+}
+
+// Read a bit from I2C bus
+bool i2c_read_bit(void) {
+  bool bit;
+  // Let the slave drive data
+  read_SDA();
+  I2C_delay();
+  while (read_SCL() == 0) { // Clock stretching
+    // You should add timeout to this loop
+  }
+  // SCL is high, now data is valid
+  bit = read_SDA();
+  I2C_delay();
+  clear_SCL();
+  return bit;
+}
+
+// Write a byte to I2C bus. Return 0 if ack by the slave.
+bool i2c_write_byte(bool send_start,
+    bool send_stop,
+    unsigned char byte) {
+  unsigned bit;
+  bool nack;
+  if (send_start) {
+    i2c_start_cond();
+  }
+  for (bit = 0; bit < 8; bit++) {
+    i2c_write_bit((byte & 0x80) != 0);
+    byte <<= 1;
+  }
+  nack = i2c_read_bit();
+  if (send_stop) {
+    i2c_stop_cond();
+  }
+  return nack;
+}
+
+// Read a byte from I2C bus
+unsigned char i2c_read_byte(bool nack, bool send_stop) {
+  unsigned char byte = 0;
+  unsigned bit;
+  for (bit = 0; bit < 8; bit++) {
+    byte = (byte << 1) | i2c_read_bit();
+  }
+  i2c_write_bit(nack);
+  if (send_stop) {
+    i2c_stop_cond();
+  }
+  return byte;
+}
+
+// writes d to register ra. returns 1 if successful, 0 otherwise
+bool mpu9150_write_register(uint8_t ra, uint8_t data[], size_t n)
+{
+  if (i2c_write_byte(1, 0, (0x68 << 1))) return 1; // send address byte. send start, no stop
+  if (i2c_write_byte(0, 0, ra))          return 1; // send register address
+
+  size_t i;
+  for (i = 0; i < n; i++) if (i2c_write_byte(0, i == (n - 1), data[i])) return 1; // send data
+
+  return 0; // success
+}
+
+bool mpu9150_read_register(uint8_t ra, uint8_t data[], size_t n)
+{
+  if (i2c_write_byte(1, 0, (0x68 << 1)))        return 1; // send address byte. send start, no stop
+  if (i2c_write_byte(0, 0, ra))                 return 1; // send register address
+  if (i2c_write_byte(1, 0, (0x68 << 1) | 0x01)) return 1; // send address byte. send start, no stop
+
+  size_t i;
+  for (i = 0; i < n; i++) data[i] = i2c_read_byte(i == (n - 1), i == (n - 1));
+
+  return 0; // success
+}
 
 /*===========================================================================*/
 /* USB related stuff.                                                        */
@@ -344,44 +525,54 @@ static const SerialUSBConfig serusbcfg = {
 BaseSequentialStream *USBout = (BaseSequentialStream *)&SDU1;
 BaseChannel *USBin = (BaseChannel *)&SDU1;
 
+//const I2CConfig mpu9150_config = { 
+//  STM32_TIMINGR_PRESC(15U) |
+//  STM32_TIMINGR_SCLDEL(4U) | STM32_TIMINGR_SDADEL(2U) |
+//  STM32_TIMINGR_SCLH(15U)  | STM32_TIMINGR_SCLL(21U),
+//  0,
+//  0
+//};
+
 const I2CConfig mpu9150_config = { 
-  STM32_TIMINGR_PRESC(15U) |
-  STM32_TIMINGR_SCLDEL(4U) | STM32_TIMINGR_SDADEL(2U) |
-  STM32_TIMINGR_SCLH(15U)  | STM32_TIMINGR_SCLL(21U),
-  0,  
+  STM32_TIMINGR_PRESC(14U) |
+    STM32_TIMINGR_SCLDEL(5U) | STM32_TIMINGR_SDADEL(3U) |
+    STM32_TIMINGR_SCLH(18U)  | STM32_TIMINGR_SCLL(23U),
+  0,
   0
 };
 
 
 static uint8_t *o_fb;
+color_rgb_t led[N_LEDS];
 static uint16_t gpio_pin1_mask = 0b0000000000000010;
 
 static const color_rgb_t red = {100, 0, 0};
 static const color_rgb_t green = {0, 100, 0};
 static const color_rgb_t blue = {0, 0, 100};
+static const color_rgb_t black = {0, 0, 0};
 
 /*
-static WORKING_AREA(wathread_leds, 512);
-  __attribute__ ((__noreturn__))
-static msg_t thread_leds(void *arg)
-{
+   static WORKING_AREA(wathread_leds, 512);
+   __attribute__ ((__noreturn__))
+   static msg_t thread_leds(void *arg)
+   {
 
-  (void) arg;
-  while (TRUE) {
-    //chprintf(USBout, "red\r\n");
-    set_color_rgb(red, o_fb, gpio_pin1_mask);
-    chThdSleepMilliseconds(1000);
+   (void) arg;
+   while (TRUE) {
+//chprintf(USBout, "red\r\n");
+set_color_rgb(red, o_fb, gpio_pin1_mask);
+chThdSleepMilliseconds(1000);
 
-    //chprintf(USBout, "green\r\n");
-    set_color_rgb(green, o_fb, gpio_pin1_mask);
-    chThdSleepMilliseconds(1000);
+//chprintf(USBout, "green\r\n");
+set_color_rgb(green, o_fb, gpio_pin1_mask);
+chThdSleepMilliseconds(1000);
 
-    //chprintf(USBout, "blue\r\n");
-    set_color_rgb(blue, o_fb, gpio_pin1_mask);
-    chThdSleepMilliseconds(1000);
-  }
+//chprintf(USBout, "blue\r\n");
+set_color_rgb(blue, o_fb, gpio_pin1_mask);
+chThdSleepMilliseconds(1000);
 }
-*/
+}
+ */
 
 /*
  * Application entry point.
@@ -414,28 +605,84 @@ int main(void) {
   usbStart(serusbcfg.usbp, &usbcfg);
   usbConnectBus(serusbcfg.usbp);
 
+  /*
+   * Initialize timer for i2c
+   */
+  gptStart(&GPTD1, &i2c_timer);
+
   /*  
    * Starting the I2C driver 1.
    */
   i2cStart(&I2CD1, &mpu9150_config);
 
-  /*
-   * Start MPU9150
-   */
-  mpu9150_start(&I2CD1);
-  mpu9150_write_pm1(&I2CD1, 0x00);
 
   /*
    * Initialize LedDriver - 20 leds in chain, GPIOA pin 1
    */
   led_driver_init(N_LEDS, GPIOA, gpio_pin1_mask, &o_fb);
 
+  uint8_t data[6];
   color_rgb_t c;
-  while (TRUE) {
-    MPU9150_accel_data d;
-    mpu9150_a_read_x_y_z(&I2CD1, &d);
-    chprintf(USBout, "%d, %d, %d\r\n", d.x, d.y, d.z);
+  bool success;
 
-    chThdSleepMilliseconds(100);
+  /*
+   * Wake up mpu9150
+   */
+  data[0] = 0x02;
+
+  success = mpu9150_write_register(0x6B, data, 1);
+
+  int i;
+  for (i = 0; i < N_LEDS; i++) {
+    led[i] = black;
+    set_color_rgb(black, o_fb + 24*i, gpio_pin1_mask);
+  }
+
+
+  while (TRUE) {
+
+    success = mpu9150_read_register(0x3B, data, 6);
+    if (!success) {
+      //int32_t r = (int32_t) data[0] << 8 | data[1];
+      //int32_t g = (int32_t) data[2] << 8 | data[3];
+      //int32_t b = (int32_t) data[4] << 8 | data[5];
+
+      int8_t r = (int8_t) data[0];
+      int8_t g = (int8_t) data[2];
+      int8_t b = (int8_t) data[4];
+
+      //if (r < 0) r *= -1;
+      //if (g < 0) g *= -1;
+      //if (b < 0) b *= -1;
+
+      if (r < 0) r = 0;
+      if (g < 0) g *= -1;
+      else       g = 0;
+      if (b < 0) b = 0;
+
+      //c.red = r*255/32768;
+      //c.green = g*255/32768;
+      //c.blue = b*255/32768;
+
+      c.red = r/4;
+      c.green = g/4;
+      c.blue = b/4;
+
+      for (i = N_LEDS - 1; i > 0; i--) led[i] = led[i - 1];
+      led[0] = c;
+    }
+
+    for (i = 0; i < N_LEDS; i++) set_color_rgb_array(led[i], i);
+    push_buffer_leds();
+
+    //success = mpu9150_read_register(0x3B, data, 6);
+    //if (success) chprintf(USBout, "FAILED\t\t");
+    //else         chprintf(USBout, "SUCCESS\t\t");
+    //chprintf(USBout, "x: %d\t", (int32_t) data[0] << 8 | data[1]);
+    //chprintf(USBout, "y: %d\t", (int32_t) data[2] << 8 | data[3]);
+    //chprintf(USBout, "z: %d\t", (int32_t) data[4] << 8 | data[5]);
+    //chprintf(USBout, "\r\n");
+
+    //chThdSleepMilliseconds(100);
   }
 }

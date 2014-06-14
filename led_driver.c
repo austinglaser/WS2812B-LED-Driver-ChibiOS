@@ -25,8 +25,8 @@ void _correct_gamma(color_rgb_t * c);
 void _correct_white(color_rgb_t * c);
 
 void set_color_rgb(color_rgb_t c, uint8_t *buf, uint32_t mask){
-  _correct_gamma(&c);
-  _correct_white(&c);
+  //_correct_gamma(&c);
+  //_correct_white(&c);
 
   set_color(c.green,buf, mask);
   set_color(c.red,buf+8, mask);
@@ -204,6 +204,13 @@ void set_color_rgb_location(color_rgb_t c, uint8_t back_nfront, uint8_t section,
 
   if (!back_nfront) set_color_rgb(c, dummy_fb + 24*front_lut[section][index], sMask);
   else              set_color_rgb(c, dummy_fb +  24*back_lut[section][index], sMask);
+}
+
+void set_color_rgb_array(color_rgb_t c, uint8_t index)
+{
+  if (index >= sLeds) return;
+
+  set_color_rgb(c, dummy_fb + 24*index, sMask);
 }
 
 void push_buffer_leds(void) {

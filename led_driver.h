@@ -42,6 +42,8 @@ void set_color_hsl(color_hsl_t c, uint8_t *buf, uint32_t mask);
 void set_color_hsv(color_hsv_t c, uint8_t *buf, uint32_t mask);
 void test_pattern_fb(uint8_t *fb);
 
+void set_color_rgb_array(color_rgb_t c, uint8_t index);
+
 void set_color_rgb_location(color_rgb_t c, uint8_t back_nfront, uint8_t section, uint8_t index);
 void set_color_hsl_location(color_hsl_t c, uint8_t back_nfront, uint8_t section, uint8_t index);
 void set_color_hsv_location(color_hsv_t c, uint8_t back_nfront, uint8_t section, uint8_t index);
