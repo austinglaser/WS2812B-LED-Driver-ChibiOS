@@ -297,3 +297,21 @@ color_rgb_t convert_color_hsl_to_rgb(color_hsl_t c_hsl)
   color_rgb_t c_rgb = {((uint8_t) red*255.0), ((uint8_t) green*255.0), ((uint8_t) blue*255.0)};
   return c_rgb;
 }
+
+color_hsv_t average_color_hsv(color_hsv_t * c_arr, size_t n)
+{
+  color_hsv_t c_avg = {0, 0, 0};
+
+  size_t i;
+  for (i = 0; i < n; i++) {
+    c_avg.hue += c_arr[i].hue;
+    c_avg.sat += c_arr[i].sat;
+    c_avg.val += c_arr[i].val;
+  }
+
+  c_avg.hue /= n;
+  c_avg.sat /= n;
+  c_avg.val /= n;
+
+  return c_avg;
+}
